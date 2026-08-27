@@ -75,7 +75,19 @@ async function run() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ symbols: raw })
     });
-    const data = await res.json();
+    // 防 JSON.parse 爆：先讀 text，再 try parse，失敗就顯示真正回應內容
+    const text = await res.text();
+    if (!res.ok) {
+      setStatus(`❌ 伺服器回應 HTTP ${res.status}：${text.slice(0,200)}`, true);
+      return;
+    }
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      setStatus("❌ 回應唔係 JSON（function 可能未部署？）：" + text.slice(0,200), true);
+      return;
+    }
     if (data.error) { setStatus("❌ " + data.error, true); return; }
     render(data);
     const e = (data.errors||[]).map(x=>x.ticker+"("+x.error+")").join("、");
