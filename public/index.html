@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>美股技術 Screen · April</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "PingFang HK","Microsoft YaHei",system-ui,sans-serif;
+         max-width: 960px; margin: auto; padding: 16px; background:#fafafa; color:#222; }
+  h1 { font-size: 20px; color:#c8102e; border-bottom:3px solid #c8102e; padding-bottom:6px; }
+  .bar { display:flex; gap:8px; margin:14px 0; flex-wrap:wrap; }
+  input { flex:1; min-width:200px; padding:10px; font-size:15px; border:1px solid #ccc; border-radius:6px; }
+  button { padding:10px 20px; font-size:15px; background:#c8102e; color:#fff; border:none;
+           border-radius:6px; cursor:pointer; }
+  button:disabled { background:#aaa; }
+  .hint { font-size:12px; color:#777; }
+  #status { font-size:13px; margin:6px 0; min-height:18px; }
+  table { border-collapse:collapse; width:100%; margin-top:10px; font-size:13px;
+          background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  th,td { border:1px solid #e3e3e3; padding:6px 8px; text-align:center; }
+  th { background:#f0f0f0; cursor:pointer; user-select:none; }
+  th:hover { background:#e0e0e0; }
+  .score { font-weight:700; font-size:15px; }
+  .s8,.s7,.s6 { background:#c8f0c8; } .s5,.s4 { background:#fff3c4; }
+  .s3,.s2,.s1,.s0 { background:#ffd9d9; }
+  .flag { color:#c8102e; font-size:11px; }
+  .charts { display:grid; grid-template-columns:1fr; gap:14px; margin-top:18px; }
+  .chart-card { background:#fff; padding:10px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .chart-card h3 { margin:4px 0 8px; font-size:14px; }
+  @media(min-width:640px){ .charts { grid-template-columns:1fr 1fr; } }
+  .err { color:#c8102e; font-size:12px; }
+</style>
+</head>
+<body>
+<h1>📊 美股技術 Screen（計分比較）</h1>
+<div class="bar">
+  <input id="sym" placeholder="輸入 symbol，空格或逗號分隔，例如  AAPL NVDA TSLA HOOD" />
+  <button id="go">Screen</button>
+</div>
+<div class="hint">評分 max 8：黃金交叉+2 · RSI健康+1 · MACD牛+2 · 相對強度+1 · 水位+1 · 理想band+1 ｜ 止損=−2×ATR ｜ 穿MA200=警告</div>
+<div id="status"></div>
+
+<table id="tbl" style="display:none">
+  <thead><tr>
+    <th data-k="ticker">Symbol</th>
+    <th data-k="score">分</th>
+    <th data-k="price">價</th>
+    <th data-k="rsi">RSI</th>
+    <th data-k="ret3m">3mo%</th>
+    <th data-k="rel_str">相對SPY</th>
+    <th data-k="dist_high">vs52w高</th>
+    <th data-k="stop_loss">止損</th>
+    <th data-k="golden">金叉</th>
+    <th data-k="macd_bull">MACD</th>
+  </tr></thead>
+  <tbody id="tbody"></tbody>
+</table>
+
+<div class="charts" id="charts"></div>
+
+<script>
+const API = "/api/screen";
+let sortKey = "score", sortAsc = false;
+
+async function run() {
+  const raw = document.getElementById("sym").value.trim();
+  if (!raw) { setStatus("請先輸入至少一隻 symbol", true); return; }
+  const btn = document.getElementById("go");
+  btn.disabled = true; setStatus("拉緊數據 + 計分中…");
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbols: raw })
+    });
+    const data = await res.json();
+    if (data.error) { setStatus("❌ " + data.error, true); return; }
+    render(data);
+    const e = (data.errors||[]).map(x=>x.ticker+"("+x.error+")").join("、");
+    setStatus(`✅ 篩到 ${data.count} 隻 ｜ SPY 3mo: ${data.bench_ret3m}%` + (e?` ｜ 跳過: ${e}`:""));
+  } catch (err) {
+    setStatus("❌ 網絡/伺服器錯誤: " + err.message, true);
+  } finally { btn.disabled = false; }
+}
+
+function setStatus(t, isErr){ const s=document.getElementById("status");
+  s.textContent=t; s.className=isErr?"err":""; }
+
+function render(data){
+  const rows = data.rows.slice();
+  rows.sort((a,b)=> (a[sortKey]>b[sortKey]?1:a[sortKey]<b[sortKey]?-1:0) * (sortAsc?1:-1));
+  const tb = document.getElementById("tbody"); tb.innerHTML="";
+  document.getElementById("tbl").style.display="";
+  rows.forEach(r=>{
+    const tr=document.createElement("tr");
+    const sc = "s"+r.score;
+    tr.innerHTML = `<td><b>${r.ticker}</b></td>
+      <td class="score ${sc}">${r.score}</td>
+      <td>$${r.price}</td>
+      <td>${r.rsi ?? "—"}</td>
+      <td>${r.ret3m>0?"+":""}${r.ret3m}</td>
+      <td>${r.rel_str>0?"+":""}${r.rel_str}</td>
+      <td>${r.dist_high>0?"+":""}${r.dist_high}%</td>
+      <td>$${r.stop_loss ?? "—"}</td>
+      <td>${r.golden?"✅":"—"}</td>
+      <td>${r.macd_bull?"🐂":"🐻"}</td>`;
+    tb.appendChild(tr);
+  });
+  drawCharts(rows);
+}
+
+function drawCharts(rows){
+  const box = document.getElementById("charts"); box.innerHTML="";
+  rows.forEach(r=>{
+    if(!r.series || !r.series.length) return;
+    const card=document.createElement("div"); card.className="chart-card";
+    card.innerHTML = `<h3>${r.ticker} · 近120日收市價 <span class="hint">(分${r.score})</span></h3>
+      <canvas height="160"></canvas>`;
+    box.appendChild(card);
+    const ctx = card.querySelector("canvas").getContext("2d");
+    new Chart(ctx, {
+      type:"line",
+      data:{ labels: r.series.map((_,i)=>i),
+        datasets:[{ label:r.ticker, data:r.series, borderColor:"#c8102e",
+          borderWidth:1.5, pointRadius:0, tension:.1 }] },
+      options:{ responsive:true, plugins:{legend:{display:false}},
+        scales:{ x:{display:false}, y:{ticks:{font:{size:10}}} } }
+    });
+  });
+}
+
+document.getElementById("go").addEventListener("click", run);
+document.getElementById("sym").addEventListener("keydown", e=>{ if(e.key==="Enter") run(); });
+document.querySelectorAll("th[data-k]").forEach(th=>{
+  th.addEventListener("click", ()=>{
+    const k=th.dataset.k;
+    if(sortKey===k) sortAsc=!sortAsc; else { sortKey=k; sortAsc=false; }
+    const tb=document.getElementById("tbody");
+    if(tb.children.length) document.getElementById("go").click();
+  });
+});
+</script>
+</body>
+</html>

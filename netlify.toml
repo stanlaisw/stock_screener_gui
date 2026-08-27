@@ -1,0 +1,12 @@
+[build]
+  publish = "public"
+  functions = "functions"
+
+[functions]
+  # Python serverless function 超時（秒）。拉 30 隻嘢可能要耐啲。
+  timeout = 26
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
