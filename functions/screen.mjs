@@ -17,23 +17,36 @@ async function fetchYahoo(ticker, range = "2y", interval = "1d") {
   const res0 = data?.chart?.result?.[0];
   if (!res0) throw new Error("no chart result");
   const q = res0.indicators.quote[0];
-  const closes = q.close, highs = q.high, lows = q.low;
+  const closes = q.close, highs = q.high, lows = q.low, vols = q.volume || [];
   const valid = [];
   for (let i = 0; i < closes.length; i++) {
     if (closes[i] != null && highs[i] != null && lows[i] != null) {
-      valid.push([closes[i], highs[i], lows[i]]);
+      valid.push([closes[i], highs[i], lows[i], (vols[i] != null ? vols[i] : 0)]);
     }
   }
   return {
     c: valid.map(v => v[0]),
     h: valid.map(v => v[1]),
     l: valid.map(v => v[2]),
+    v: valid.map(v => v[3]),
   };
 }
 
 function sma(arr, n) {
   if (arr.length < n) return null;
   return arr.slice(-n).reduce((a, b) => a + b, 0) / n;
+}
+
+// 滾動 SMA，回同長度 array（前 n-1 位為 null），畀圖表畫 MA 線
+function smaSeries(arr, n) {
+  const out = new Array(arr.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < arr.length; i++) {
+    sum += arr[i];
+    if (i >= n) sum -= arr[i - n];
+    if (i >= n - 1) out[i] = round(sum / n, 2);
+  }
+  return out;
 }
 
 function rsi(arr, period = 14) {
@@ -87,9 +100,10 @@ const round = (x, d = 2) => {
 
 // ───────────────────────── 評分 ─────────────────────────
 async function screenOne(t, benchRet3m) {
-  const { c, h, l } = await fetchYahoo(t);
+  const { c, h, l, v } = await fetchYahoo(t);
   if (!c || c.length < 210) throw new Error("no data / <min bars");
   const ma50 = sma(c, 50), ma200 = sma(c, 200);
+  const ma50s = smaSeries(c, 50), ma200s = smaSeries(c, 200);
   const r = rsi(c, 14);
   const [mline, msig] = macd(c);
   const cur = c[c.length - 1];
@@ -108,6 +122,7 @@ async function screenOne(t, benchRet3m) {
   if (distHigh >= -25.0 && distHigh < 0) score += 1;
   if (distHigh >= -15.0 && distHigh <= -3.0) score += 1;
 
+  const W = 260;  // 畫圖窗口：夠長等 MA200 有連續線
   return {
     ticker: t.toUpperCase(),
     price: round(cur, 2),
@@ -123,7 +138,10 @@ async function screenOne(t, benchRet3m) {
     stop_loss: stop,
     below_ma200: belowMa200,
     score,
-    series: c.slice(-120).map(x => round(x, 2)),
+    series: c.slice(-W).map(x => round(x, 2)),
+    volumes: v.slice(-W).map(x => Math.round(x)),
+    ma50_series: ma50s.slice(-W),
+    ma200_series: ma200s.slice(-W),
   };
 }
 

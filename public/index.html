@@ -31,6 +31,7 @@
   .chart-card h3 { margin:4px 0 8px; font-size:14px; }
   @media(min-width:640px){ .charts { grid-template-columns:1fr 1fr; } }
   .err { color:#c8102e; font-size:12px; }
+  .legend { font-size:11px; margin:2px 0 6px; display:flex; gap:10px; flex-wrap:wrap; }
 </style>
 </head>
 <body>
@@ -127,18 +128,56 @@ function drawCharts(rows){
   const box = document.getElementById("charts"); box.innerHTML="";
   rows.forEach(r=>{
     if(!r.series || !r.series.length) return;
+    const n = r.series.length;
     const card=document.createElement("div"); card.className="chart-card";
-    card.innerHTML = `<h3>${r.ticker} · 近120日收市價 <span class="hint">(分${r.score})</span></h3>
-      <canvas height="160"></canvas>`;
+    const stopTxt = (r.stop_loss!=null) ? `┄ 止損 $${r.stop_loss}` : "";
+    card.innerHTML = `<h3>${r.ticker} · 近${n}日 <span class="hint">(分${r.score})</span></h3>
+      <canvas height="210"></canvas>
+      <div class="legend">
+        <span style="color:#c8102e">■ 收市價</span>
+        <span style="color:#1f6feb">■ MA50</span>
+        <span style="color:#e8830c">■ MA200</span>
+        <span style="color:#999">▦ 成交量</span>
+        <span style="color:#c8102e">${stopTxt}</span>
+      </div>`;
     box.appendChild(card);
     const ctx = card.querySelector("canvas").getContext("2d");
+    const labels = r.series.map((_,i)=>i);
+    const datasets = [
+      { label:"收市價", data:r.series, borderColor:"#c8102e", borderWidth:1.6,
+        pointRadius:0, tension:.1, yAxisID:"y" },
+      { label:"MA50", data:r.ma50_series||[], borderColor:"#1f6feb", borderWidth:1.2,
+        pointRadius:0, tension:.1, spanGaps:true, yAxisID:"y" },
+      { label:"MA200", data:r.ma200_series||[], borderColor:"#e8830c", borderWidth:1.2,
+        pointRadius:0, tension:.1, spanGaps:true, yAxisID:"y" },
+      { label:"成交量", data:r.volumes||[], type:"bar",
+        backgroundColor:"rgba(150,150,150,.35)", yAxisID:"yv" },
+    ];
+    if (r.stop_loss != null) {
+      datasets.push({ label:"止損", data: r.series.map(()=>r.stop_loss),
+        borderColor:"#c8102e", borderWidth:1, borderDash:[5,4],
+        pointRadius:0, yAxisID:"y" });
+    }
     new Chart(ctx, {
-      type:"line",
-      data:{ labels: r.series.map((_,i)=>i),
-        datasets:[{ label:r.ticker, data:r.series, borderColor:"#c8102e",
-          borderWidth:1.5, pointRadius:0, tension:.1 }] },
-      options:{ responsive:true, plugins:{legend:{display:false}},
-        scales:{ x:{display:false}, y:{ticks:{font:{size:10}}} } }
+      data:{ labels, datasets },
+      options:{
+        responsive:true,
+        interaction:{ mode:"index", intersect:false },
+        plugins:{ legend:{ display:false },
+          tooltip:{ callbacks:{ label:(c)=>{
+            const v=c.parsed.y; if(v==null) return null;
+            return c.dataset.label + ": " + (c.dataset.type==="bar"
+              ? (v/1e6).toFixed(2)+"M" : "$"+v.toFixed(2));
+          } } } },
+        scales:{
+          x:{ display:false },
+          y:{ position:"left", ticks:{ font:{size:10} } },
+          yv:{ position:"right", display:true,
+            ticks:{ font:{size:9}, callback:(v)=>(v/1e6).toFixed(1)+"M" },
+            grid:{ drawOnChartArea:false },
+            max: Math.max(...(r.volumes||[1])) * 4 }
+        }
+      }
     });
   });
 }
