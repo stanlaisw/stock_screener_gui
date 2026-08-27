@@ -2,6 +2,11 @@
   publish = "public"
   functions = "functions"
 
+# Python serverless function 超時（秒）。拉 30 隻嘢可能要耐啲。
+# 新版 Netlify schema 要 per-function 寫法（函數名 = functions/ 下嘅 .py 檔名，呢度係 screen.py）。
+[functions.screen]
+  timeout = 26
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
