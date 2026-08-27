@@ -17,7 +17,6 @@ server 端拉 Yahoo chart API (避開瀏覽器 CORS)，用純 stdlib 計指標 +
 
 import json
 import urllib.request
-from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 # ───────────────────────── 指標 (純 stdlib) ─────────────────────────
@@ -172,6 +171,44 @@ def _resp(code, obj):
         },
         "body": json.dumps(obj, ensure_ascii=False),
     }
+
+
+# ───────────────────────── Netlify 官方格式 (新版) ─────────────────────────
+# 同時支援舊式 AWS Lambda handler(event, context) 做 back-compat。
+try:
+    from netlify.function import Function, Request, Response
+
+    class Handler(Function):
+        def on_post(self, req: Request) -> Response:
+            try:
+                body = json.loads(req.body) if isinstance(req.body, (str, bytes)) else {}
+                if isinstance(req.body, bytes):
+                    body = json.loads(req.body.decode())
+            except Exception:
+                body = {}
+            event = {
+                "httpMethod": "POST",
+                "body": json.dumps(body),
+                "rawUrl": "",
+            }
+            out = handler(event, None)
+            return Response(
+                body=out["body"],
+                status=out["statusCode"],
+                headers=out["headers"],
+            )
+
+        def on_get(self, req: Request) -> Response:
+            qs = req.query_string.decode() if isinstance(req.query_string, bytes) else (req.query_string or "")
+            from urllib.parse import parse_qs
+            parsed = parse_qs(qs)
+            raw = (parsed.get("q") or parsed.get("symbols") or [""])[0]
+            event = {"httpMethod": "GET", "body": "", "rawUrl": "/api/screen?" + qs}
+            out = handler(event, None)
+            return Response(body=out["body"], status=out["statusCode"], headers=out["headers"])
+except ImportError:
+    # netlify.function 唔喺本地 import 到（正常），keep handler 模式就得
+    pass
 
 
 # ── 本地測試用 (python functions/screen.py) ──
