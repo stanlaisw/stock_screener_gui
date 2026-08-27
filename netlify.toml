@@ -4,7 +4,8 @@
 
 [functions]
   # Python serverless function 超時（秒）。拉 30 隻嘢可能要耐啲。
-  timeout = 26
+  [functions.timeout]
+    timeout = 26
 
 [[redirects]]
   from = "/api/*"
