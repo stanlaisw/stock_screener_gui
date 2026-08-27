@@ -1,6 +1,10 @@
 [build]
   publish = "public"
-  functions = "functions"
+
+# Netlify 新版：functions 目錄要用獨立 [functions] section 聲明
+# （[build] 底下嘅 functions = "functions" 已經被忽略，會令 function 冇被 deploy → 404）
+[functions]
+  directory = "functions"
 
 # Python serverless function 超時（秒）。拉 30 隻嘢可能要耐啲。
 # 新版 Netlify schema 要 per-function 寫法（函數名 = functions/ 下嘅 .py 檔名，呢度係 screen.py）。
