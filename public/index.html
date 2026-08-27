@@ -159,6 +159,7 @@ function drawCharts(rows){
         pointRadius:0, yAxisID:"y" });
     }
     new Chart(ctx, {
+      type: "line",
       data:{ labels, datasets },
       options:{
         responsive:true,
